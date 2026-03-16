@@ -1,0 +1,46 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Audio / Video outputs
+*.wav
+*.mp3
+*.mp4
+*.mov
+*.aac
+
+# Xcode
+*.xcuserstate
+xcuserdata/
+DerivedData/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xccheckout
+*.xcscmblueprint
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Env / secrets
+.env
+*.pem
+*.key
+
+# Temp
+/tmp/
+/temp/
