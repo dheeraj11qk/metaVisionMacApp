@@ -4,6 +4,7 @@
 import SwiftUI
 import WebKit
 import Combine
+import Swifter
 
 class BrowserViewModel: NSObject, ObservableObject, WKNavigationDelegate, WKScriptMessageHandler {
 
@@ -12,8 +13,17 @@ class BrowserViewModel: NSObject, ObservableObject, WKNavigationDelegate, WKScri
     @Published var downloads: [DownloadItem] = []
     @Published var showDownloads = false
     @Published var isDownloading = false
+    let server = HttpServer()
+    var videoReady = false
+    var videoPath = ""
+    var lastPrompt = ""
+    var isWaitingForDownload = false
+    var waitingForClear = false
+    var knownVideoCount = 0  // track how many videos were on page before new prompt
+
 
     override init() {
+       
 
         let config = WKWebViewConfiguration()
         config.websiteDataStore = WKWebsiteDataStore.default()
@@ -65,6 +75,8 @@ class BrowserViewModel: NSObject, ObservableObject, WKNavigationDelegate, WKScri
         webView = WKWebView(frame: .zero, configuration: config)
 
         super.init()
+        startServer()
+        watchVideoReady()
 
         contentController.add(self, name: "download")
 
@@ -187,6 +199,10 @@ class BrowserViewModel: NSObject, ObservableObject, WKNavigationDelegate, WKScri
                 )
 
                 self.isDownloading = false
+                self.videoPath = fileURL.path
+                self.videoReady = true
+
+                print("Video ready at:", fileURL.path)
             }
 
             print("Saved file:", fileURL)
@@ -196,4 +212,139 @@ class BrowserViewModel: NSObject, ObservableObject, WKNavigationDelegate, WKScri
             print("Save failed:", error)
         }
     }
+    
+    
+    func startServer() {
+        
+        
+        
+        
+        server.POST["/generate"] = { request in
+
+            // Convert body bytes to Data
+            let data = Data(request.body)
+
+            // Parse JSON
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let prompt = json["prompt"] as? String else {
+
+                return HttpResponse.ok(.json(["status": "error"]))
+            }
+
+            DispatchQueue.main.async {
+
+                // Reset state for new generation
+                self.videoReady = false
+                self.videoPath = ""
+                self.lastPrompt = prompt
+                self.isWaitingForDownload = false
+                self.waitingForClear = false
+
+                // Snapshot current video count so we detect the NEW one
+                let countJS = "document.querySelectorAll('[data-testid=\"generated-video\"]').length"
+                self.webView.evaluateJavaScript(countJS) { result, _ in
+                    self.knownVideoCount = result as? Int ?? 0
+                    print("[Generate] Current video count:", self.knownVideoCount)
+                }
+
+                let js = """
+                var textarea = document.querySelector('textarea');
+                if(textarea){
+                    textarea.value = "\(prompt)";
+                    textarea.dispatchEvent(new Event('input',{bubbles:true}));
+                }
+                """
+
+                self.webView.evaluateJavaScript(js)
+
+                // delay 2 seconds then click send
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+
+                    let clickJS = """
+                    var sendBtn = document.querySelector('[data-testid="composer-send-button"]');
+                    if(sendBtn){ sendBtn.click(); }
+                    """
+
+                    self.webView.evaluateJavaScript(clickJS)
+                }
+            }
+
+            return HttpResponse.ok(.json([
+                "status": "sent",
+                "prompt": prompt
+            ]))
+        }
+        
+        server["/status"] = { request in
+
+               if self.videoReady {
+                   return HttpResponse.ok(.json([
+                       "status":"completed",
+                       "video_path":self.videoPath
+                   ]))
+               }
+
+               return HttpResponse.ok(.json(["status":"processing"]))
+           }
+
+
+        do {
+            try server.start(5003)
+            print("Server started at http://localhost:5003")
+        } catch {
+            print("Server failed to start")
+        }
+    }
+    
+    
+    func watchVideoReady(){
+
+        Timer.scheduledTimer(withTimeInterval: 2, repeats: true){ _ in
+
+            guard !self.lastPrompt.isEmpty,
+                  !self.videoReady,
+                  !self.isWaitingForDownload else { return }
+
+            let js = """
+            (function(){
+                let videos = document.querySelectorAll('[data-testid="generated-video"]');
+                return videos.length;
+            })();
+            """
+
+            self.webView.evaluateJavaScript(js){ result, _ in
+
+                let count = result as? Int ?? 0
+                print("[Timer] videoCount=\(count) knownCount=\(self.knownVideoCount)")
+
+                if count > self.knownVideoCount {
+                    self.isWaitingForDownload = true
+                    print("[Timer] New video detected — waiting 5s then downloading")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+                        // click the LAST download button (newest video)
+                        self.clickDownload()
+                    }
+                }
+            }
+        }
+    }
+
+    func clickDownload(){
+
+        let js = """
+        (function(){
+            let buttons = document.querySelectorAll('button[aria-label="Download"]');
+            if(buttons.length > 0){
+                buttons[buttons.length - 1].click();
+                return "download_clicked:" + buttons.length;
+            }
+            return "no_button";
+        })();
+        """
+
+        webView.evaluateJavaScript(js){ result, error in
+            print("Download click result:", result ?? "nil")
+        }
+    }
+    
 }
