@@ -20,12 +20,13 @@ def get_story(topic: str) -> str:
 def get_video_prompts(topic: str, count: int = 3) -> list[str]:
     """
     Generate a list of video prompts for the given topic.
+    Prefixed with 'Generate a video of' to trigger meta.ai video mode.
     TODO: replace with ollama call
     """
     return [
-        f"Cinematic aerial shot of {topic} at golden hour, ultra realistic, 4K",
-        f"Close-up slow motion of {topic} with dramatic lighting and fog",
-        f"Futuristic timelapse of {topic} transitioning from day to night",
+        f"Generate a video of {topic}, cinematic aerial shot, golden hour, ultra realistic",
+        f"Generate a video of {topic}, close-up slow motion, dramatic lighting and fog",
+        f"Generate a video of {topic}, futuristic timelapse transitioning from day to night",
     ][:count]
 
 

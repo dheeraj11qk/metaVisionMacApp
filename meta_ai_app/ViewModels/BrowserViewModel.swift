@@ -287,6 +287,28 @@ class BrowserViewModel: NSObject, ObservableObject, WKNavigationDelegate, WKScri
                return HttpResponse.ok(.json(["status":"processing"]))
            }
 
+        // Debug endpoint — returns all data-testid values on the page
+        server["/debug"] = { request in
+            var result = ""
+            let sema = DispatchSemaphore(value: 0)
+
+            DispatchQueue.main.async {
+                let js = """
+                (function(){
+                    let els = document.querySelectorAll('[data-testid]');
+                    let ids = Array.from(els).map(e => e.getAttribute('data-testid'));
+                    return ids.join(',');
+                })();
+                """
+                self.webView.evaluateJavaScript(js) { res, _ in
+                    result = res as? String ?? "none"
+                    sema.signal()
+                }
+            }
+            sema.wait()
+            return HttpResponse.ok(.json(["testids": result]))
+        }
+
 
         do {
             try server.start(5003)
