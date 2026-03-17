@@ -1,10 +1,3 @@
-//
-//  meta_ai_appApp.swift
-//  meta_ai_app
-//
-//  Created by Dheeraj Gautam on 16/03/26.
-//
-
 import SwiftUI
 import CoreData
 

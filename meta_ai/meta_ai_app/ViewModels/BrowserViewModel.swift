@@ -23,7 +23,6 @@ class BrowserViewModel: NSObject, ObservableObject, WKNavigationDelegate, WKScri
 
 
     override init() {
-       
 
         let config = WKWebViewConfiguration()
         config.websiteDataStore = WKWebsiteDataStore.default()
@@ -75,8 +74,12 @@ class BrowserViewModel: NSObject, ObservableObject, WKNavigationDelegate, WKScri
         webView = WKWebView(frame: .zero, configuration: config)
 
         super.init()
+
         startServer()
         watchVideoReady()
+
+        // Auto-load meta.ai on launch
+        load(urlString: "https://www.meta.ai/")
 
         contentController.add(self, name: "download")
 
