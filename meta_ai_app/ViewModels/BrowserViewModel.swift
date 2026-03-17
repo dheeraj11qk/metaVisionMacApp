@@ -157,7 +157,7 @@ class BrowserViewModel: NSObject, ObservableObject, WKNavigationDelegate, WKScri
         }
     }
 
-    // MARK: Save blob file
+    // MARK: Save blob file — saves inside app sandbox Documents folder
 
     func saveBase64File(_ base64: String) {
 
@@ -177,38 +177,24 @@ class BrowserViewModel: NSObject, ObservableObject, WKNavigationDelegate, WKScri
 
         let filename = "download_\(UUID().uuidString).\(ext)"
 
-        let downloadsFolder = FileManager.default.urls(
-            for: .downloadsDirectory,
-            in: .userDomainMask
-        ).first!
-
-        let fileURL = downloadsFolder.appendingPathComponent(filename)
+        // Save inside app sandbox Documents — always writable
+        let docsFolder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let fileURL = docsFolder.appendingPathComponent(filename)
 
         do {
-
             try data.write(to: fileURL)
 
             DispatchQueue.main.async {
-
                 self.downloads.append(
-                    DownloadItem(
-                        filename: filename,
-                        progress: 1,
-                        status: "Completed"
-                    )
+                    DownloadItem(filename: filename, progress: 1, status: "Completed")
                 )
-
                 self.isDownloading = false
                 self.videoPath = fileURL.path
                 self.videoReady = true
-
-                print("Video ready at:", fileURL.path)
+                print("Video saved in sandbox at:", fileURL.path)
             }
 
-            print("Saved file:", fileURL)
-
         } catch {
-
             print("Save failed:", error)
         }
     }
@@ -277,15 +263,44 @@ class BrowserViewModel: NSObject, ObservableObject, WKNavigationDelegate, WKScri
         
         server["/status"] = { request in
 
-               if self.videoReady {
-                   return HttpResponse.ok(.json([
-                       "status":"completed",
-                       "video_path":self.videoPath
-                   ]))
-               }
+            guard self.videoReady, !self.videoPath.isEmpty else {
+                return HttpResponse.ok(.json(["status": "processing"]))
+            }
 
-               return HttpResponse.ok(.json(["status":"processing"]))
-           }
+            // Read the video file and return as base64 so Python can save it outside sandbox
+            guard let data = FileManager.default.contents(atPath: self.videoPath) else {
+                return HttpResponse.ok(.json(["status": "error", "message": "file not readable"]))
+            }
+
+            let base64 = data.base64EncodedString()
+            let filename = URL(fileURLWithPath: self.videoPath).lastPathComponent
+
+            return HttpResponse.ok(.json([
+                "status": "completed",
+                "filename": filename,
+                "data": base64
+            ]))
+        }
+
+        // Delete the video file from inside the app sandbox after Python has saved it
+        server.POST["/delete"] = { request in
+            let pathToDelete = self.videoPath
+            guard !pathToDelete.isEmpty else {
+                return HttpResponse.ok(.json(["status": "nothing_to_delete"]))
+            }
+            do {
+                try FileManager.default.removeItem(atPath: pathToDelete)
+                DispatchQueue.main.async {
+                    self.videoPath = ""
+                    self.videoReady = false
+                }
+                print("Deleted sandbox file:", pathToDelete)
+                return HttpResponse.ok(.json(["status": "deleted", "file": pathToDelete]))
+            } catch {
+                print("Delete failed:", error)
+                return HttpResponse.ok(.json(["status": "error", "message": error.localizedDescription]))
+            }
+        }
 
         // Debug endpoint — returns all data-testid values on the page
         server["/debug"] = { request in

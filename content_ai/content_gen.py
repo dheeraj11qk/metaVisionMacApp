@@ -9,12 +9,8 @@ def get_story(topic: str) -> str:
     Generate a short story for the given topic.
     TODO: replace with ollama call
     """
-    return (
-        f"In a world transformed by technology, a lone explorer named Aria "
-        f"embarks on a journey through {topic}. "
-        f"With every step, she uncovers ancient secrets hidden beneath the surface, "
-        f"leading her to a discovery that will change humanity forever."
-    )
+    return (f"In a world transformed by technology, a lone explorer named Aria "
+        f"embarks on a journey through {topic}. ")
 
 
 def get_video_prompts(topic: str, count: int = 3) -> list[str]:
@@ -25,9 +21,8 @@ def get_video_prompts(topic: str, count: int = 3) -> list[str]:
     """
     return [
         f"Generate a video of {topic}, cinematic aerial shot, golden hour, ultra realistic",
-        f"Generate a video of {topic}, close-up slow motion, dramatic lighting and fog",
-        f"Generate a video of {topic}, futuristic timelapse transitioning from day to night",
-    ][:count]
+        f"Generate a video of {topic}, close-up slow motion, dramatic lighting and fog"
+    ]
 
 
 if __name__ == "__main__":

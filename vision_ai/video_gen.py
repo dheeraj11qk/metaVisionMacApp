@@ -3,10 +3,14 @@ import time
 import subprocess
 import os
 import glob
+import base64
 
 SERVER = "http://localhost:5003"
 
-# Path to the built app — finds the most recently modified build automatically
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SEGMENTS_DIR = os.path.join(ROOT, "temp", "video_segments")
+
+
 def find_app_path() -> str:
     pattern = os.path.expanduser(
         "~/Library/Developer/Xcode/DerivedData/meta_ai_app-*/Build/Products/Debug/meta_ai_app.app"
@@ -14,7 +18,6 @@ def find_app_path() -> str:
     matches = glob.glob(pattern)
     if not matches:
         raise FileNotFoundError("meta_ai_app.app not found. Build it in Xcode first.")
-    # pick the most recently modified
     return max(matches, key=os.path.getmtime)
 
 
@@ -35,7 +38,6 @@ def ensure_app_running():
     print(f"Starting app: {app_path}")
     subprocess.Popen(["open", app_path])
 
-    # Wait up to 30s for server to come up
     for i in range(30):
         time.sleep(1)
         if is_server_running():
@@ -47,26 +49,19 @@ def ensure_app_running():
 
 def generate_video(prompt: str, timeout: int = 120) -> str:
     """
-    Ensure the app is running, send a prompt, poll until video is ready,
-    and return the file path.
+    Send prompt to Swift app, poll until video is ready,
+    retrieve base64 data, save to temp/video_segments/, return path.
     """
-
     ensure_app_running()
+    os.makedirs(SEGMENTS_DIR, exist_ok=True)
 
-    # Send prompt
-    resp = requests.post(
-        f"{SERVER}/generate",
-        json={"prompt": prompt},
-        timeout=10
-    )
+    resp = requests.post(f"{SERVER}/generate", json={"prompt": prompt}, timeout=10)
     resp.raise_for_status()
     print("Sent prompt:", resp.json())
 
-    # Poll /status until completed or timeout
     start = time.time()
 
     while True:
-
         elapsed = time.time() - start
 
         if elapsed > timeout:
@@ -75,17 +70,32 @@ def generate_video(prompt: str, timeout: int = 120) -> str:
         time.sleep(3)
 
         data = requests.get(f"{SERVER}/status", timeout=10).json()
-        print(f"[{int(elapsed)}s] status:", data)
+        print(f"[{int(elapsed)}s] status:", data.get("status"))
 
         if data.get("status") == "completed":
-            video_path = data.get("video_path", "")
-            print("Video ready:", video_path)
-            return video_path
+            filename = data.get("filename", f"video_{int(time.time())}.mp4")
+            b64 = data.get("data", "")
+
+            # Decode and save to temp/video_segments/
+            video_bytes = base64.b64decode(b64)
+            out_path = os.path.join(SEGMENTS_DIR, filename)
+
+            with open(out_path, "wb") as f:
+                f.write(video_bytes)
+
+            print("Video saved to:", out_path)
+
+            # Clean up the file inside the app sandbox
+            try:
+                requests.post(f"{SERVER}/delete", timeout=5)
+                print("Sandbox file deleted.")
+            except Exception as e:
+                print("Delete request failed (non-critical):", e)
+
+            return out_path
 
 
 if __name__ == "__main__":
-
     prompt = "Generate a cinematic video of a robot walking in a futuristic city"
-
     path = generate_video(prompt)
     print("Done. File saved at:", path)
