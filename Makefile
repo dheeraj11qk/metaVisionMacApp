@@ -1,14 +1,35 @@
 TOPIC ?= a turtle exploring a magical pond
 APP_SCHEME = meta_ai_app
-APP_PROJECT = meta_ai_app.xcodeproj
+APP_PROJECT = meta_ai/meta_ai_app.xcodeproj
 DERIVED_DATA = $(HOME)/Library/Developer/Xcode/DerivedData
 VENV = .venv/bin/python
 
-.PHONY: video build-app open-app
+.PHONY: video build-app open-app kill-app content_test ollama-start voice_test
 
 ## Run full pipeline: make video TOPIC="your topic here"
-video: build-app open-app
+video: build-app open-app ollama-start
 	$(VENV) agent_ai/agent.py "$(TOPIC)"
+
+video_test: build-app open-app
+	$(VENV) vision_ai/video_gen.py
+
+# voice_test: PYTHONPATH=$(PWD) 
+# 	$(VENV) audio-ai/voice_gen.py
+
+## Ensure Ollama is running with qwen2.5:7b
+ollama-start:
+	@echo "[Make] Checking Ollama..."
+	@pgrep -x ollama > /dev/null || (ollama serve &> /dev/null & sleep 3 && echo "[Make] Ollama started.")
+	@ollama pull qwen2.5:7b 2>/dev/null || true
+	@echo "[Make] Ollama ready with qwen2.5:7b"
+
+## Run content generation test
+content_test: ollama-start
+	PYTHONPATH=$(PWD) $(VENV) content_ai/content_gen.py
+
+## Run voice generation test
+voice_test:
+	PYTHONPATH=$(PWD) $(VENV) audio_ai/voice_gen.py
 
 ## Build the macOS app via xcodebuild
 build-app:
@@ -20,8 +41,14 @@ build-app:
 		build | xcpretty || true
 	@echo "[Make] Build done."
 
-## Open/launch the built app
-open-app:
+## Kill the app if it's running
+kill-app:
+	@echo "[Make] Killing $(APP_SCHEME) if running..."
+	@pkill -x "$(APP_SCHEME)" 2>/dev/null && echo "[Make] App killed." || echo "[Make] App was not running."
+	@sleep 1
+
+## Open/launch the built app (kills existing instance first)
+open-app: kill-app
 	@echo "[Make] Launching macOS app..."
 	@APP_PATH=$$(find $(DERIVED_DATA)/meta_ai_app_build -name "$(APP_SCHEME).app" -type d 2>/dev/null | head -1); \
 	if [ -n "$$APP_PATH" ]; then \
