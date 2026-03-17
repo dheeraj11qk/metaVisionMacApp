@@ -9,7 +9,7 @@ import glob
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from content_ai.content_gen import get_story, get_video_prompts
+from content_ai.content_gen import get_story, get_video_prompts, get_title, get_description
 from audio_ai.voice_gen import VoiceGen
 from vision_ai.video_gen import generate_video
 from video_edit.video_edit import VideoEditor
@@ -29,8 +29,11 @@ def run(topic: str):
 
     # Step 1: generate story + video prompts
     print("\n[Agent] Step 1: Generating story and video prompts...")
+    title = get_title(topic)
+    description = get_description(topic)
     story = get_story(topic)
-    video_prompts = get_video_prompts(topic, count=3)
+    video_prompts = get_video_prompts(topic, count=4)
+    print(f"[Agent] Title: {title}")
     print(f"[Agent] Story: {story[:80]}...")
     print(f"[Agent] Video prompts: {len(video_prompts)}")
 
@@ -59,10 +62,14 @@ def run(topic: str):
 
     # Step 5: merge combined video with voice
     print("\n[Agent] Step 5: Merging video with voice...")
-    final_path = os.path.join(output_dir, "final_output.mp4")
+    # use title as filename, sanitize for filesystem
+    safe_title = "".join(c if c.isalnum() or c in " _-" else "" for c in title).strip().replace(" ", "_")
+    final_path = os.path.join(output_dir, f"{safe_title}.mp4")
     editor.combine(combined_video, voice_path, final_path)
 
     print("\n" + "=" * 50)
+    print(f"[Agent] Title: {title}")
+    print(f"[Agent] Description: {description}")
     print(f"[Agent] Done. Final video: {final_path}")
     print("=" * 50)
 
